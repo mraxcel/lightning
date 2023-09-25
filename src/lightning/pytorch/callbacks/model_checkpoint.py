@@ -619,6 +619,8 @@ class ModelCheckpoint(Checkpoint):
                 for p in self._fs.ls(ckpt_path, detail=False)
                 if self.CHECKPOINT_NAME_LAST in os.path.split(p)[1]
             }
+        else:
+            rank_zero_warn(f"Checkpoint directory {ckpt_path} does not exist")
         return set()
 
     def __warn_if_dir_not_empty(self, dirpath: _PATH) -> None:
