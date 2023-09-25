@@ -35,6 +35,8 @@ from lightning.pytorch.utilities.migration import pl_legacy_patch
 from lightning.pytorch.utilities.migration.utils import _pl_migrate_checkpoint
 from lightning.pytorch.utilities.rank_zero import rank_zero_info, rank_zero_warn
 
+from lightning.pytorch.strategies.deepspeed import DeepSpeedStrategy
+
 log = logging.getLogger(__name__)
 
 
@@ -180,7 +182,18 @@ class _CheckpointConnector:
                 if isinstance(callback, ModelCheckpoint):
                     candidates |= callback._find_last_checkpoints(self.trainer)
             candidates_fs = {path: get_filesystem(path) for path in candidates if path}
-            candidates_ts = {path: fs.modified(path) for path, fs in candidates_fs.items() if fs.exists(path)}
+            candidates_ts = {}
+            for path, fs in candidates_fs.items():
+                if fs.exists(path):
+                    if isinstance(self.trainer.strategy, DeepSpeedStrategy):
+                        rank_zero_warn("Found a checkpoint path with DeepSpeed used")
+                        candidates_ts[path] = fs.modified(os.path.join(path, "latest"))
+                    else:
+                        rank_zero_warn("Found a checkpoint path but DeepSpeed is not used")
+                        candidates_ts[path] = fs.modified(path)
+                else:
+                    rank_zero_warn(f"Checkpoint path {path} does not exist. Skipping.")
+
             if not candidates_ts:
                 # not an error so it can be set and forget before the first `fit` run
                 rank_zero_warn(
